@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lily's Easter Adventure</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Bubblegum+Sans&display=swap');
+
+        body {
+            font-family: 'Bubblegum Sans', cursive;
+            touch-action: manipulation;
+            overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+            background-color: #f0fdf4;
+        }
+
+        .pop-in {
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .collect-effect {
+            animation: collect 0.6s ease-out forwards;
+        }
+
+        @keyframes collect {
+            0% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(2) translateY(-80px); opacity: 0; }
+        }
+
+        /* Platformer Styles */
+        #bunny {
+            transition: bottom 0.4s cubic-bezier(0.33, 1, 0.68, 1);
+        }
+        
+        .obstacle-move {
+            animation: moveObstacle 2s linear infinite;
+        }
+
+        @keyframes moveObstacle {
+            from { right: -50px; }
+            to { right: 110%; }
+        }
+
+        .shake {
+            animation: shake 0.5s;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+    </style>
+</head>
+<body class="h-screen w-full flex flex-col items-center justify-center select-none">
+
+    <!-- Header UI -->
+    <div id="game-ui" class="hidden absolute top-0 left-0 w-full p-4 flex justify-between items-center z-50 bg-white/80 backdrop-blur-md border-b-2 border-pink-100">
+        <div class="flex flex-col">
+            <span id="level-name" class="text-pink-500 text-xs uppercase font-bold tracking-tighter">Level 1: Egg Sort</span>
+            <div class="flex items-baseline gap-2">
+                <span class="text-gray-400 text-lg">Score:</span>
+                <span id="score-val" class="text-4xl text-pink-600">0</span>
+            </div>
+        </div>
+        <div id="goal-container" class="bg-pink-100 px-4 py-1 rounded-full">
+            <span class="text-pink-600">Goal: <span id="goal-val">20</span></span>
+        </div>
+    </div>
+
+    <!-- START SCREEN -->
+    <div id="start-screen" class="z-50 text-center p-6 flex flex-col items-center">
+        <div class="text-8xl mb-6 scale-110">🥚</div>
+        <h1 class="text-5xl text-pink-500 mb-2 drop-shadow-sm">Lily's Easter Quest</h1>
+        <p class="text-xl text-blue-500 mb-8 max-w-xs">Tap ONLY the eggs! Avoid the distractions to reach Level 2!</p>
+        <button onclick="startLevel1()" class="bg-pink-400 hover:bg-pink-500 text-white text-3xl px-12 py-4 rounded-full shadow-lg transform transition active:scale-95 border-b-8 border-pink-600">
+            PLAY!
+        </button>
+    </div>
+
+    <!-- LEVEL 1: EGG SORTING -->
+    <div id="level-1-area" class="hidden relative w-full h-full overflow-hidden bg-emerald-50">
+        <!-- Eggs and traps spawn here -->
+    </div>
+
+    <!-- LEVEL 2: BUNNY HOP -->
+    <div id="level-2-area" class="hidden relative w-full h-full overflow-hidden bg-sky-100">
+        <div class="absolute bottom-0 w-full h-32 bg-green-400 border-t-4 border-green-600"></div>
+        <div id="bunny" class="absolute left-10 bottom-32 text-7xl z-10">🐰</div>
+        <div id="obstacles-container" class="absolute inset-0"></div>
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div class="bg-white/30 p-4 rounded-xl text-sky-700 text-xl font-bold animate-pulse">TAP TO JUMP!</div>
+        </div>
+    </div>
+
+    <!-- LEVEL UP NOTIFICATION -->
+    <div id="level-up" class="hidden fixed inset-0 z-[100] bg-pink-500/90 flex flex-col items-center justify-center text-white text-center p-10">
+        <h2 class="text-6xl mb-4 font-bold">LEVEL UP!</h2>
+        <p class="text-2xl mb-8">Great sorting, Lily! Now help the bunny jump!</p>
+        <div class="text-9xl mb-8">🐰</div>
+    </div>
+
+    <!-- GAME OVER -->
+    <div id="game-over" class="hidden z-50 text-center p-6 flex flex-col items-center bg-white rounded-3xl shadow-2xl mx-4 border-4 border-pink-200">
+        <h2 class="text-4xl text-pink-500 mb-2">Wonderful!</h2>
+        <div class="text-6xl mb-4">🌈</div>
+        <p class="text-xl text-gray-600 mb-2">You finished the quest!</p>
+        <p id="final-stats" class="text-2xl text-blue-500 mb-8">Final Score: 0</p>
+        <button onclick="location.reload()" class="bg-green-400 text-white text-2xl px-10 py-3 rounded-full shadow-lg border-b-4 border-green-600">
+            Play Again!
+        </button>
+    </div>
+
+    <script>
+        let score = 0;
+        let currentLevel = 1;
+        let gameActive = false;
+        let spawnInterval;
+        let bunnyJumping = false;
+        let gameLoop;
+
+        // Level 1 Config
+        const eggs = ['🥚', '🐣', '🎨', '🧁'];
+        const traps = ['🌸', '🦋', '🐝', '☁️'];
+
+        function updateUI() {
+            document.getElementById('score-val').innerText = score;
+        }
+
+        // --- LEVEL 1 LOGIC ---
+        function startLevel1() {
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-ui').classList.remove('hidden');
+            document.getElementById('level-1-area').classList.remove('hidden');
+            gameActive = true;
+            spawnInterval = setInterval(spawnItem, 600);
+        }
+
+        function spawnItem() {
+            if (!gameActive || currentLevel !== 1) return;
+
+            const area = document.getElementById('level-1-area');
+            const isEgg = Math.random() > 0.3;
+            const emoji = isEgg 
+                ? eggs[Math.floor(Math.random() * eggs.length)]
+                : traps[Math.floor(Math.random() * traps.length)];
+
+            const div = document.createElement('div');
+            div.className = 'absolute text-6xl cursor-pointer pop-in p-4';
+            div.style.left = Math.random() * (window.innerWidth - 100) + 'px';
+            div.style.top = Math.random() * (window.innerHeight - 250) + 100 + 'px';
+            div.innerHTML = emoji;
+
+            div.onpointerdown = (e) => {
+                e.preventDefault();
+                if (isEgg) {
+                    score += 2;
+                    showFeedback(div, "+2", "text-green-500");
+                    if (score >= 20) transitionToLevel2();
+                } else {
+                    score = Math.max(0, score - 3);
+                    showFeedback(div, "Oops!", "text-red-500");
+                    document.body.classList.add('shake');
+                    setTimeout(() => document.body.classList.remove('shake'), 500);
+                }
+                updateUI();
+                div.remove();
+            };
+
+            area.appendChild(div);
+            setTimeout(() => div.remove(), 1800);
+        }
+
+        function showFeedback(el, text, colorClass) {
+            const f = document.createElement('div');
+            f.className = `absolute text-3xl font-bold ${colorClass} pointer-events-none collect-effect`;
+            f.style.left = el.style.left;
+            f.style.top = el.style.top;
+            f.innerText = text;
+            document.body.appendChild(f);
+            setTimeout(() => f.remove(), 600);
+        }
+
+        // --- TRANSITION ---
+        function transitionToLevel2() {
+            clearInterval(spawnInterval);
+            currentLevel = 2;
+            document.getElementById('level-up').classList.remove('hidden');
+            
+            setTimeout(() => {
+                document.getElementById('level-up').classList.add('hidden');
+                document.getElementById('level-1-area').classList.add('hidden');
+                document.getElementById('level-2-area').classList.remove('hidden');
+                document.getElementById('level-name').innerText = "Level 2: Bunny Hop";
+                document.getElementById('goal-container').classList.add('hidden');
+                startLevel2();
+            }, 3000);
+        }
+
+        // --- LEVEL 2 LOGIC ---
+        function startLevel2() {
+            const bunny = document.getElementById('bunny');
+            const area = document.getElementById('level-2-area');
+            
+            // Tap to jump
+            area.onpointerdown = (e) => {
+                e.preventDefault();
+                if (!bunnyJumping) {
+                    bunnyJumping = true;
+                    bunny.style.bottom = '280px';
+                    setTimeout(() => {
+                        bunny.style.bottom = '128px';
+                        setTimeout(() => bunnyJumping = false, 400);
+                    }, 400);
+                }
+            };
+
+            // Spawn obstacles (Cactus/Rocks)
+            gameLoop = setInterval(() => {
+                const obs = document.createElement('div');
+                obs.className = 'absolute bottom-32 text-5xl obstacle-move';
+                obs.innerHTML = '🌵';
+                document.getElementById('obstacles-container').appendChild(obs);
+
+                // Collision Detection
+                const checkCollision = setInterval(() => {
+                    const bRect = bunny.getBoundingClientRect();
+                    const oRect = obs.getBoundingClientRect();
+
+                    if (
+                        bRect.right > oRect.left + 20 &&
+                        bRect.left < oRect.right - 20 &&
+                        bRect.bottom > oRect.top + 20
+                    ) {
+                        endGame();
+                    }
+                    
+                    // Award points for passing
+                    if (oRect.right < bRect.left && !obs.passed) {
+                        obs.passed = true;
+                        score += 5;
+                        updateUI();
+                        if (score > 100) endGame(); // Win at 100
+                    }
+                }, 50);
+
+                setTimeout(() => {
+                    clearInterval(checkCollision);
+                    obs.remove();
+                }, 2100);
+            }, 2000);
+        }
+
+        function endGame() {
+            clearInterval(gameLoop);
+            gameActive = false;
+            document.getElementById('game-ui').classList.add('hidden');
+            document.getElementById('level-2-area').classList.add('hidden');
+            document.getElementById('game-over').classList.remove('hidden');
+            document.getElementById('final-stats').innerText = `Total Score: ${score}`;
+        }
+    </script>
+</body>
+</html>
